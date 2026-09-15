@@ -1,242 +1,211 @@
-# ESP32 Omni-Wheel Robot Controller
+# OMNI ESP32 Controller & Monitor
 
-Sistem kendali robot omni-wheel berbasis ESP32 dan Raspberry Pi. Sistem ini menggunakan game controller sebagai input, Python sebagai pengirim data melalui Bluetooth Classic SPP, dan ESP32 sebagai penerima data yang mengolah pergerakan robot menggunakan inverse kinematics.
+Sistem ini terdiri dari dua bagian utama:
 
-## 1. System Overview
+1. **ESP32** sebagai pengendali motor melalui Bluetooth.
+2. **Python Controller Monitor** sebagai aplikasi untuk membaca joystick dan mengirimkan perintah ke ESP32.
 
-Sistem terdiri dari tiga komponen utama:
-
-* **Game Controller:** Menghasilkan input analog joystick dan tombol.
-* **Raspberry Pi:** Menjalankan program Python untuk membaca input controller, menampilkan GUI monitor, dan mengirim data melalui Bluetooth.
-* **ESP32:** Menerima data Bluetooth, menghitung kecepatan masing-masing motor, dan mengendalikan empat motor omni-wheel.
-
-### System Architecture
-
-```text
-+-------------------+
-|  Game Controller  |
-+-------------------+
-          |
-          | Pygame
-          v
-+---------------------------+
-| Raspberry Pi              |
-| Python Controller Monitor |
-| Tkinter + PyGame          |
-+---------------------------+
-          |
-          | Bluetooth Classic SPP
-          | /dev/rfcomm0
-          v
-+---------------------------+
-| ESP32                     |
-| BluetoothSerial           |
-| Packet Parser             |
-| Inverse Kinematics        |
-+---------------------------+
-          |
-          v
-+---------------------------+
-| 4 Motor Driver Channels   |
-| M1 | M2 | M3 | M4         |
-+---------------------------+
-          |
-          v
-+---------------------------+
-| Omni-Wheel Robot          |
-+---------------------------+
-```
-
-## 2. Features
-
-* Membaca input analog joystick dan tombol menggunakan Pygame.
-* Menampilkan nilai axis dan button secara real-time.
-* Menampilkan visualisasi posisi analog stick.
-* Menghubungkan Raspberry Pi dengan ESP32 melalui Bluetooth SPP.
-* Mengirim data kendali dalam format paket yang terstruktur.
-* Mengolah pergerakan robot dengan inverse kinematics.
-* Mengatur kecepatan global robot.
-* Mendukung kalibrasi individual setiap motor.
-* Menggunakan deadband untuk mengurangi pergerakan akibat noise joystick.
-
-## 3. Hardware Requirements
-
-| Komponen           | Keterangan                               |
-| ------------------ | ---------------------------------------- |
-| ESP32              | Pengendali utama robot dan Bluetooth SPP |
-| Raspberry Pi       | Menjalankan program Python               |
-| Game Controller    | Input pergerakan dan tombol              |
-| Motor Driver       | Pengendali daya motor DC                 |
-| 4 Motor Omni-wheel | Sistem penggerak robot                   |
-| Power Supply       | Sumber daya motor dan sistem kontrol     |
-
-> Pastikan motor driver mendukung sinyal PWM dari ESP32 dan sumber daya motor sesuai dengan spesifikasi motor yang digunakan.
-
-## 4. Software Requirements
-
-* Arduino IDE atau PlatformIO untuk program ESP32.
-* Python 3.
-* Raspberry Pi OS atau sistem Linux yang mendukung Bluetooth Classic.
-* Library `BluetoothSerial` pada ESP32.
-* Library Python:
-
-  * `pygame`
-  * `pyserial`
-  * `tkinter`
-
-## 5. Project Structure
-
-Contoh struktur repository:
-
-```text
-omni-wheel-controller/
-├── README.md
-├── esp32/
-│   └── omni_controller.ino
-└── raspberry-pi/
-    └── controller_monitor.py
-```
-
-Simpan program ESP32 sebagai `omni_controller.ino` dan program Python sebagai `controller_monitor.py`.
+Komunikasi antara komputer/Raspberry Pi dan ESP32 menggunakan **Bluetooth RFCOMM** melalui port `/dev/rfcomm0`.
 
 ---
 
-# Part A — ESP32 Setup
+## 1. Arsitektur Sistem
 
-## 6. Upload Program to ESP32
-
-1. Buka Arduino IDE.
-2. Pilih board ESP32 yang sesuai.
-3. Buka file `omni_controller.ino`.
-4. Hubungkan ESP32 ke komputer melalui USB.
-5. Pilih port ESP32.
-6. Upload program.
-
-Program menggunakan:
-
-```cpp
-#include <Arduino.h>
-#include <math.h>
-#include "BluetoothSerial.h"
+```text
+Joystick
+   │
+   ▼
+Python Controller Monitor
+   │
+   │ Bluetooth RFCOMM
+   ▼
+/dev/rfcomm0
+   │
+   ▼
+ESP32
+   │
+   ▼
+Motor Driver
+   │
+   ▼
+Motor M1, M2, M3, M4
 ```
 
-ESP32 akan menggunakan Bluetooth Classic SPP dengan nama perangkat:
+---
+
+## 2. Komponen Sistem
+
+### Perangkat Keras
+
+* ESP32
+* Motor driver
+* Empat motor
+* Joystick/controller
+* Komputer atau Raspberry Pi
+* Kabel USB untuk pemrograman ESP32
+* Modul Bluetooth bawaan ESP32
+
+### Perangkat Lunak
+
+* Arduino IDE
+* Python 3
+* Tkinter
+* Pygame
+* PySerial
+* Bluetooth RFCOMM
+
+---
+
+## 3. Konfigurasi Bluetooth ESP32
+
+ESP32 menggunakan Bluetooth Classic dengan nama perangkat:
 
 ```text
 OMNI-ESP32
 ```
 
-Ketika ESP32 berhasil dijalankan, Serial Monitor akan menampilkan:
+Alamat Bluetooth ESP32:
 
 ```text
-ESP32 Omni Diamond Ready. Layout: 1=depan,2=kanan,3=kiri,4=belakang
-Bluetooth SPP aktif, cari perangkat: OMNI-ESP32
+8C:94:DF:4C:D2:EA
 ```
 
-Atur baud rate Serial Monitor ke `115200`.
-
-## 7. Motor Pin Configuration
-
-Konfigurasi pin PWM pada program ESP32 adalah sebagai berikut:
-
-| Motor | Posisi   | PWM Right | PWM Left |
-| ----- | -------- | --------: | -------: |
-| M1    | Depan    |   GPIO 15 |   GPIO 2 |
-| M2    | Kanan    |    GPIO 4 |  GPIO 16 |
-| M3    | Kiri     |   GPIO 18 |  GPIO 19 |
-| M4    | Belakang |   GPIO 17 |   GPIO 5 |
-
-### Layout Motor
+Channel RFCOMM:
 
 ```text
-                M1
-              DEPAN
-                ^
-                |
-     M3 <-------+-------> M2
-    KIRI               KANAN
-                |
-                v
-             M4
-           BELAKANG
+1
 ```
 
-**Catatan:** Penamaan posisi motor mengikuti komentar dan konfigurasi pada program ESP32. Pastikan arah putaran motor sesuai dengan posisi dan mekanik robot.
+Port yang digunakan pada komputer atau Raspberry Pi:
 
-## 8. Motor Speed Configuration
-
-### Maximum PWM
-
-```cpp
-const int maxPWM = 255;
+```text
+/dev/rfcomm0
 ```
-
-Nilai PWM dibatasi pada rentang `-255` hingga `255`.
-
-* Nilai positif: Motor bergerak menggunakan output `PWM_R`.
-* Nilai negatif: Motor bergerak menggunakan output `PWM_L`.
-* Nilai nol: Motor berhenti.
-
-### Global Speed Scale
-
-```cpp
-const double SPEED_SCALE = 0.40;
-```
-
-`SPEED_SCALE` mengatur skala kecepatan global robot. Nilai `0.40` berarti perintah kecepatan translasi dan rotasi dikalikan 40%.
-
-### Motor Calibration
-
-```cpp
-double CAL1 = 1.00;
-double CAL2 = 1.00;
-double CAL3 = 1.00;
-double CAL4 = 1.00;
-```
-
-Kalibrasi digunakan untuk mengompensasi perbedaan karakteristik motor.
-
-Contoh:
-
-```cpp
-double CAL1 = 1.10;
-```
-
-Motor 1 akan mendapatkan faktor kalibrasi 1.10 sebelum proses normalisasi PWM. Sesuaikan nilai ini berdasarkan hasil pengujian masing-masing motor.
 
 ---
 
-# Part B — Raspberry Pi and Python Setup
+## 4. Konfigurasi Pin Motor ESP32
 
-## 9. Install System Dependencies
+| Motor | PWM Right | PWM Left | Posisi   |
+| ----- | --------: | -------: | -------- |
+| M1    |   GPIO 15 |   GPIO 2 | Depan    |
+| M2    |    GPIO 4 |  GPIO 16 | Kanan    |
+| M3    |   GPIO 18 |  GPIO 19 | Kiri     |
+| M4    |   GPIO 17 |   GPIO 5 | Belakang |
 
-Update package list:
+Konfigurasi tambahan:
 
-```bash
-sudo apt update
+```cpp
+const int maxPWM = 255;
+const float SPEED_SCALE = 0.40;
 ```
 
-Install Python, Bluetooth tools, dan library yang diperlukan:
+Nilai `SPEED_SCALE` digunakan untuk membatasi kecepatan motor agar tidak langsung bekerja pada daya maksimum.
 
-```bash
-sudo apt install python3 python3-pip python3-tk \
-  python3-pygame python3-serial \
-  bluez bluetooth
+---
+
+## 5. Format Data Komunikasi
+
+Python mengirimkan data ke ESP32 dalam format berikut:
+
+```text
+<x,y,b6,b7>
 ```
 
-Pastikan perintah Bluetooth tersedia:
+Contoh:
 
-```bash
-which bluetoothctl
-which rfcomm
+```text
+<127,127,0,0>
 ```
 
-## 10. Create Python Environment
+Keterangan:
 
-Buat direktori project:
+| Data | Fungsi                 |
+| ---- | ---------------------- |
+| `x`  | Nilai sumbu X joystick |
+| `y`  | Nilai sumbu Y joystick |
+| `b6` | Status tombol 6        |
+| `b7` | Status tombol 7        |
+
+Nilai joystick berada pada rentang:
+
+```text
+0–255
+```
+
+ESP32 kemudian mengubah nilai tersebut menjadi perintah gerakan:
+
+* `Vx` untuk gerakan lateral
+* `Vy` untuk gerakan maju atau mundur
+* `W` untuk rotasi
+
+---
+
+## 6. Kontrol Gerakan
+
+ESP32 menggunakan metode inverse kinematics untuk mengatur empat motor.
+
+Rumus yang digunakan:
+
+```text
+M1 = Vy + R × W
+M2 = Vx + R × W
+M3 = -Vx + R × W
+M4 = -Vy + R × W
+```
+
+Dengan:
+
+```text
+R = 7.6
+```
+
+Keterangan:
+
+* `Vx` merupakan gerakan ke kanan atau kiri.
+* `Vy` merupakan gerakan maju atau mundur.
+* `W` merupakan gerakan rotasi.
+* `M1`, `M2`, `M3`, dan `M4` merupakan kecepatan masing-masing motor.
+
+ESP32 juga menggunakan deadband untuk menghindari gerakan kecil akibat noise joystick.
+
+```text
+Deadband = 20
+```
+
+---
+
+## 7. Instalasi Program ESP32
+
+### 7.1 Membuka Program
+
+1. Buka **Arduino IDE**.
+2. Masukkan program ESP32.
+3. Pilih board ESP32 yang sesuai.
+4. Pilih port USB ESP32.
+5. Klik **Upload**.
+
+### 7.2 Memastikan Bluetooth Aktif
+
+Setelah program berhasil di-upload:
+
+1. Nyalakan ESP32.
+2. Buka Serial Monitor jika diperlukan.
+3. Pastikan Bluetooth ESP32 aktif dengan nama:
+
+```text
+OMNI-ESP32
+```
+
+ESP32 akan menunggu koneksi Bluetooth dari komputer atau Raspberry Pi.
+
+---
+
+## 8. Instalasi Python Controller Monitor
+
+Masuk ke folder program Python:
 
 ```bash
-mkdir -p ~/controller-monitor
 cd ~/controller-monitor
 ```
 
@@ -246,487 +215,416 @@ Buat virtual environment:
 python3 -m venv venv
 ```
 
-Aktifkan environment:
-
-```bash
-source venv/bin/activate
-```
-
-Install library Python:
-
-```bash
-pip install pygame pyserial
-```
-
-> Jika menggunakan library Pygame dan PySerial dari package system, virtual environment tidak wajib digunakan. Pastikan kedua library tersedia pada Python yang menjalankan program.
-
-## 11. Pair ESP32 with Raspberry Pi
-
-Pastikan ESP32 sudah menyala dan programnya telah di-upload.
-
-Jalankan:
-
-```bash
-bluetoothctl
-```
-
-Kemudian:
-
-```text
-power on
-agent on
-default-agent
-scan on
-```
-
-Cari perangkat bernama:
-
-```text
-OMNI-ESP32
-```
-
-Catat MAC address yang ditampilkan. Contoh:
-
-```text
-AA:BB:CC:DD:EE:FF
-```
-
-Pair perangkat:
-
-```text
-pair AA:BB:CC:DD:EE:FF
-trust AA:BB:CC:DD:EE:FF
-connect AA:BB:CC:DD:EE:FF
-```
-
-Ganti MAC address contoh dengan MAC address ESP32 milikmu.
-
-Keluar dari `bluetoothctl`:
-
-```text
-quit
-```
-
-### Cek perangkat yang pernah dipairing
-
-Jika lupa MAC address ESP32:
-
-```bash
-bluetoothctl devices
-```
-
-Contoh:
-
-```text
-Device AA:BB:CC:DD:EE:FF OMNI-ESP32
-```
-
-Perintah ini dapat menampilkan perangkat Bluetooth yang tersimpan pada Raspberry Pi.
-
-## 12. Bind Bluetooth SPP to RFCOMM
-
-Program Python menggunakan device serial:
-
-```text
-/dev/rfcomm0
-```
-
-Buat binding RFCOMM:
-
-```bash
-sudo rfcomm bind /dev/rfcomm0 AA:BB:CC:DD:EE:FF 1
-```
-
-Keterangan:
-
-* `/dev/rfcomm0`: Device serial virtual pada Raspberry Pi.
-* `AA:BB:CC:DD:EE:FF`: MAC address ESP32.
-* `1`: Channel RFCOMM SPP.
-
-Periksa binding:
-
-```bash
-rfcomm
-```
-
-Contoh output:
-
-```text
-rfcomm0: AA:BB:CC:DD:EE:FF channel 1 connected
-```
-
-Periksa device:
-
-```bash
-ls -l /dev/rfcomm*
-```
-
-Output yang diharapkan:
-
-```text
-/dev/rfcomm0
-```
-
-> **Penting:** Jalankan binding RFCOMM sebelum menekan tombol `Refresh` pada aplikasi Python.
-
-Jika ingin melepas binding:
-
-```bash
-sudo rfcomm release /dev/rfcomm0
-```
-
----
-
-# Part C — Running the System
-
-## 13. Run the Python Controller Monitor
-
-Masuk ke direktori project:
-
-```bash
-cd ~/controller-monitor
-```
-
 Aktifkan virtual environment:
 
 ```bash
 source venv/bin/activate
 ```
 
-Jalankan program:
+Install library yang diperlukan:
 
 ```bash
-python3 controller_monitor.py
+pip install pyserial pygame
 ```
 
-Aplikasi akan menampilkan GUI dengan beberapa bagian:
+Tkinter biasanya sudah tersedia pada sistem Linux. Jika belum tersedia, install dengan:
 
-* Bluetooth device selection.
-* Tombol `Refresh`.
-* Tombol `Connect` atau `Disconnect`.
-* Status Bluetooth.
-* Status game controller.
-* Daftar axis.
-* Daftar button.
-* Visualisasi left dan right analog sticks.
-
-## 14. Connect the Game Controller
-
-1. Hubungkan game controller ke Raspberry Pi.
-2. Jalankan aplikasi Python.
-3. Pastikan status berubah menjadi nama controller yang terdeteksi.
-4. Gerakkan analog stick.
-5. Tekan tombol controller.
-6. Pastikan nilai axis dan button berubah pada GUI.
-
-Program memeriksa koneksi controller secara berkala setiap 2 detik.
-
-## 15. Connect Python to ESP32
-
-1. Pastikan ESP32 menyala.
-2. Pastikan Bluetooth ESP32 bernama `OMNI-ESP32` aktif.
-3. Pastikan Raspberry Pi telah melakukan pairing.
-4. Jalankan binding RFCOMM.
-5. Buka aplikasi Python.
-6. Klik **Refresh**.
-7. Pilih `/dev/rfcomm0`.
-8. Klik **Connect**.
-9. Pastikan status menunjukkan koneksi Bluetooth berhasil.
-
-Setelah terhubung, program Python akan mengirim data joystick secara berkala.
+```bash
+sudo apt install python3-tk
+```
 
 ---
 
-# Part D — Communication Protocol
+## 9. Menyiapkan Bluetooth RFCOMM
 
-## 16. Data Flow
+Pastikan perangkat Bluetooth ESP32 sudah pernah dipasangkan dengan komputer atau Raspberry Pi.
 
-```text
-Joystick Input
-      |
-      v
-Pygame reads axes and buttons
-      |
-      v
-Convert joystick values
-      |
-      v
-Create data packet
-      |
-      v
-Bluetooth SPP / RFCOMM
-      |
-      v
-ESP32 receives packet
-      |
-      v
-Parse X, Y, B6, B7
-      |
-      v
-Convert to Vx, Vy, W
-      |
-      v
-Inverse Kinematics
-      |
-      v
-Motor PWM Output
-```
-
-## 17. Packet Format
-
-Python mengirim data dalam format:
-
-```text
-<val_x,val_y,b6,b7>
-```
-
-Setiap paket diakhiri dengan karakter newline (`\n`).
-
-Contoh:
-
-```text
-<128,128,0,0>
-```
-
-Format data:
-
-| Field   | Keterangan                        |
-| ------- | --------------------------------- |
-| `val_x` | Nilai left joystick X-axis, 0–255 |
-| `val_y` | Nilai left joystick Y-axis, 0–255 |
-| `b6`    | Status button index 6, 0 atau 1   |
-| `b7`    | Status button index 7, 0 atau 1   |
-
-### Contoh Paket
-
-```text
-<255,127,0,0>
-```
-
-Interpretasi:
-
-* `val_x = 255`
-* `val_y = 127`
-* `b6 = 0`
-* `b7 = 0`
-
-ESP32 membaca paket berdasarkan delimiter `<` dan `>` menggunakan parser karakter.
-
-## 18. Joystick Mapping
-
-Pada program Python:
-
-```python
-val_x = int((axes[0] + 1.0) * 127.5)
-val_y = int((axes[1] + 1.0) * 127.5)
-```
-
-Axis joystick memiliki rentang sekitar `-1.0` hingga `1.0`, kemudian dikonversi ke rentang `0` hingga `255`.
-
-Pada ESP32:
-
-```cpp
-double Vy = (double)(rawX - 127) * 2.0;
-double Vx = (double)(rawY - 127) * 2.0;
-```
-
-Mapping yang digunakan:
-
-| Input                | Variabel ESP32 | Fungsi                 |
-| -------------------- | -------------- | ---------------------- |
-| Left joystick X-axis | `Vy`           | Pergerakan kanan-kiri  |
-| Left joystick Y-axis | `Vx`           | Pergerakan maju-mundur |
-| Button 6             | `W = -5.0`     | Rotasi satu arah       |
-| Button 7             | `W = 5.0`      | Rotasi arah berlawanan |
-
-> Arah fisik pergerakan bergantung pada orientasi joystick, wiring motor, dan arah putaran motor. Lakukan pengujian arah sebelum mengoperasikan robot pada kecepatan tinggi.
-
-## 19. Deadband
-
-Program ESP32 menggunakan deadband:
-
-```cpp
-if (fabs(Vx) < 20) Vx = 0;
-if (fabs(Vy) < 20) Vy = 0;
-```
-
-Jika nilai kecepatan translasi berada di bawah 20, nilainya diatur menjadi nol. Hal ini membantu mengurangi gerakan kecil akibat noise atau ketidakstabilan input joystick.
-
-## 20. Inverse Kinematics
-
-Sistem menggunakan layout motor berbentuk diamond:
-
-```text
-              M1 (Depan)
-
-M3 (Kiri)                 M2 (Kanan)
-
-             M4 (Belakang)
-```
-
-Rumus pada program:
-
-```cpp
-double M1 =  Vy + R * W;
-double M2 =  Vx + R * W;
-double M3 = -Vx + R * W;
-double M4 = -Vy + R * W;
-```
-
-Dengan:
-
-```cpp
-double R = 7.6;
-```
-
-Keterangan:
-
-* `Vx`: Komponen gerak maju-mundur.
-* `Vy`: Komponen gerak kanan-kiri.
-* `W`: Komponen rotasi.
-* `R`: Parameter jarak/konstanta rotasi pada model inverse kinematics.
-
-Setelah nilai motor dihitung, program menerapkan kalibrasi dan normalisasi agar nilai PWM tidak melebihi batas `255`.
-
-## 21. Motor Control
-
-Fungsi `setMotor()` menentukan arah motor berdasarkan tanda kecepatan:
-
-```cpp
-void setMotor(int motor, int speed)
-```
-
-* `speed > 0`: Mengaktifkan PWM kanan.
-* `speed < 0`: Mengaktifkan PWM kiri.
-* `speed == 0`: Tidak memberikan PWM pada kedua arah.
-
-Fungsi `stopAll()` digunakan untuk menghentikan seluruh motor.
-
----
-
-# Part E — Debugging and Troubleshooting
-
-## 22. ESP32 Bluetooth Not Found
-
-Pastikan:
-
-* ESP32 telah di-upload program yang benar.
-* ESP32 menyala.
-* Bluetooth Classic aktif.
-* Nama perangkat `OMNI-ESP32` muncul pada hasil scanning.
-
-Pada Raspberry Pi:
-
-```bash
-bluetoothctl devices
-```
-
-Jika belum ditemukan, jalankan:
-
-```text
-scan on
-```
-
-di dalam `bluetoothctl`.
-
-## 23. `/dev/rfcomm0` Does Not Exist
-
-Periksa binding:
+Cek perangkat RFCOMM dengan perintah:
 
 ```bash
 rfcomm
 ```
 
-Jika belum ada, jalankan:
-
-```bash
-sudo rfcomm bind /dev/rfcomm0 AA:BB:CC:DD:EE:FF 1
-```
-
-Kemudian klik `Refresh` pada aplikasi Python.
-
-## 24. Python Cannot Connect to Serial Device
-
-Pastikan:
-
-* Device `/dev/rfcomm0` tersedia.
-* MAC address ESP32 benar.
-* ESP32 telah dipairing.
-* Tidak ada program lain yang sedang menggunakan device tersebut.
-
-Periksa permission:
-
-```bash
-ls -l /dev/rfcomm0
-```
-
-Jika diperlukan untuk pengaturan akses serial, periksa grup pengguna:
-
-```bash
-groups
-```
-
-## 25. ESP32 Does Not Receive Data
-
-Periksa:
-
-1. Status Bluetooth pada GUI Python.
-2. Output terminal Python untuk melihat paket yang dikirim.
-3. Serial Monitor ESP32 untuk melihat pesan `[RAW]` dan `[PARSED]`.
-4. Format paket `<X,Y,B6,B7>`.
-5. Apakah Bluetooth SPP ESP32 menggunakan channel yang benar.
-
-Contoh log ESP32:
+Jika muncul:
 
 ```text
-[RAW] "128,128,0,0"
-[PARSED] X:[128] Y:[128] B6:[0] B7:[0]
+rfcomm0: 8C:94:DF:4C:D2:EA channel 1 closed
 ```
 
-## 26. Motor Does Not Move Correctly
+artinya konfigurasi RFCOMM untuk ESP32 sudah terdaftar, tetapi koneksi Bluetooth belum sedang aktif. Kondisi ini masih dapat digunakan karena koneksi akan dicoba ketika program Python membuka port `/dev/rfcomm0`.
 
-Periksa:
+Port yang digunakan adalah:
 
-* Wiring PWM motor driver.
-* Posisi motor M1–M4.
-* Arah putaran motor.
-* Nilai `SPEED_SCALE`.
-* Nilai kalibrasi `CAL1` hingga `CAL4`.
-* Nilai deadband.
-* Kesesuaian arah gerakan dengan layout robot.
-
-Lakukan pengujian dengan robot dalam kondisi roda tidak menyentuh lantai atau menggunakan dudukan pengujian yang aman.
+```text
+/dev/rfcomm0
+```
 
 ---
 
-# Part F — Shutdown
+## 10. Jika `/dev/rfcomm0` Belum Terdaftar
 
-## 27. Disconnect the System
+Jika perintah `rfcomm` tidak menampilkan `rfcomm0`, buat binding secara manual:
 
-1. Tekan **Disconnect** pada aplikasi Python.
-2. Hentikan program Python dengan `Ctrl + C`.
-3. Jika diperlukan, lepaskan binding RFCOMM:
+```bash
+sudo rfcomm bind /dev/rfcomm0 8C:94:DF:4C:D2:EA 1
+```
+
+Kemudian periksa kembali:
+
+```bash
+rfcomm
+```
+
+Jika berhasil, akan muncul perangkat dengan alamat:
+
+```text
+8C:94:DF:4C:D2:EA
+```
+
+dan channel:
+
+```text
+1
+```
+
+---
+
+## 11. Jika Binding RFCOMM Bermasalah
+
+Jika muncul pesan bahwa `/dev/rfcomm0` sudah digunakan atau binding mengalami masalah, lepaskan binding terlebih dahulu:
 
 ```bash
 sudo rfcomm release /dev/rfcomm0
 ```
 
-4. Matikan daya motor dan ESP32 setelah sistem berhenti.
+Kemudian buat binding kembali:
 
-## 28. Future Improvements
+```bash
+sudo rfcomm bind /dev/rfcomm0 8C:94:DF:4C:D2:EA 1
+```
 
-Beberapa pengembangan yang dapat ditambahkan:
+Periksa hasilnya:
 
-* Kontrol kecepatan menggunakan trigger atau tombol tambahan.
-* Pengiriman data dengan checksum untuk validasi paket.
-* Watchdog komunikasi untuk menghentikan motor jika koneksi terputus.
-* Kalibrasi otomatis motor.
-* Penyimpanan konfigurasi kalibrasi.
-* Pengaturan arah motor melalui GUI.
-* Penggunaan encoder untuk closed-loop speed control.
+```bash
+rfcomm
+```
 
-## License
+---
 
-This project is intended for educational and robotics development purposes.
+## 12. Menjalankan Sistem
 
-Add your project author and license information here.
+Setelah ESP32 dinyalakan, lakukan langkah berikut.
+
+### Langkah 1 — Nyalakan ESP32
+
+Nyalakan ESP32 dan pastikan Bluetooth dengan nama `OMNI-ESP32` aktif.
+
+### Langkah 2 — Periksa RFCOMM
+
+```bash
+rfcomm
+```
+
+Jika muncul:
+
+```text
+rfcomm0: 8C:94:DF:4C:D2:EA channel 1 closed
+```
+
+lanjutkan ke langkah berikutnya.
+
+Jika `rfcomm0` belum muncul, jalankan:
+
+```bash
+sudo rfcomm bind /dev/rfcomm0 8C:94:DF:4C:D2:EA 1
+```
+
+### Langkah 3 — Aktifkan Virtual Environment
+
+```bash
+cd ~/controller-monitor
+source venv/bin/activate
+```
+
+### Langkah 4 — Jalankan Program Python
+
+```bash
+python3 controller_monitor.py
+```
+
+### Langkah 5 — Hubungkan Port pada GUI
+
+Pada aplikasi Python:
+
+1. Klik **Refresh**.
+2. Pilih port:
+
+```text
+/dev/rfcomm0
+```
+
+3. Klik **Connect**.
+4. Nyalakan atau hubungkan joystick.
+5. Gerakkan joystick untuk mengendalikan motor.
+
+---
+
+## 13. Alur Penggunaan Normal
+
+Pada penggunaan berikutnya, alurnya cukup:
+
+```text
+1. Nyalakan ESP32
+2. Jalankan rfcomm
+3. Jalankan program Python
+4. Klik Refresh pada GUI
+5. Pilih /dev/rfcomm0
+6. Klik Connect
+```
+
+Jika `rfcomm0` belum tersedia, jalankan:
+
+```bash
+sudo rfcomm bind /dev/rfcomm0 8C:94:DF:4C:D2:EA 1
+```
+
+---
+
+## 14. Menjalankan Program Secara Singkat
+
+Jika RFCOMM sudah terdaftar, gunakan:
+
+```bash
+cd ~/controller-monitor
+source venv/bin/activate
+python3 controller_monitor.py
+```
+
+Jika RFCOMM belum terdaftar, gunakan:
+
+```bash
+sudo rfcomm bind /dev/rfcomm0 8C:94:DF:4C:D2:EA 1
+```
+
+kemudian jalankan program Python.
+
+---
+
+## 15. Fitur Python Controller Monitor
+
+Program Python memiliki beberapa fungsi utama:
+
+* Membaca input joystick.
+* Menampilkan nilai sumbu X dan Y.
+* Membaca status tombol joystick.
+* Mengirimkan data melalui Bluetooth.
+* Menampilkan port serial yang tersedia.
+* Melakukan refresh daftar port.
+* Menghubungkan dan memutuskan koneksi serial.
+* Menampilkan status koneksi.
+* Mengirimkan data secara berkala ke ESP32.
+
+Data yang dikirimkan memiliki format:
+
+```text
+<x,y,b6,b7>
+```
+
+Contoh data ketika joystick berada di posisi tengah:
+
+```text
+<127,127,0,0>
+```
+
+---
+
+## 16. Troubleshooting
+
+### 16.1 Port `/dev/rfcomm0` Tidak Muncul
+
+Jalankan:
+
+```bash
+rfcomm
+```
+
+Jika belum muncul, jalankan:
+
+```bash
+sudo rfcomm bind /dev/rfcomm0 8C:94:DF:4C:D2:EA 1
+```
+
+---
+
+### 16.2 Muncul Pesan `channel 1 closed`
+
+Contoh:
+
+```text
+rfcomm0: 8C:94:DF:4C:D2:EA channel 1 closed
+```
+
+Pesan tersebut menunjukkan bahwa binding RFCOMM sudah ada, tetapi sesi koneksi belum aktif.
+
+Coba langsung jalankan program Python dan hubungkan port `/dev/rfcomm0` melalui GUI.
+
+---
+
+### 16.3 Python Tidak Menemukan Port
+
+Pastikan port tersedia:
+
+```bash
+ls /dev/rfcomm*
+```
+
+Periksa juga:
+
+```bash
+python3 -m serial.tools.list_ports
+```
+
+Jika port belum tersedia, buat binding:
+
+```bash
+sudo rfcomm bind /dev/rfcomm0 8C:94:DF:4C:D2:EA 1
+```
+
+---
+
+### 16.4 Tidak Bisa Terhubung ke ESP32
+
+Pastikan:
+
+* ESP32 dalam keadaan menyala.
+* Bluetooth ESP32 aktif.
+* Alamat Bluetooth benar.
+* Channel RFCOMM menggunakan channel `1`.
+* Port yang dipilih adalah `/dev/rfcomm0`.
+* Tidak ada program lain yang sedang menggunakan port tersebut.
+
+Jika masih gagal, lepaskan binding:
+
+```bash
+sudo rfcomm release /dev/rfcomm0
+```
+
+Kemudian buat ulang:
+
+```bash
+sudo rfcomm bind /dev/rfcomm0 8C:94:DF:4C:D2:EA 1
+```
+
+---
+
+### 16.5 Motor Tidak Bergerak
+
+Periksa:
+
+* Catu daya motor.
+* Koneksi motor driver.
+* Pin GPIO ESP32.
+* Program ESP32 sudah berhasil di-upload.
+* Format data yang dikirim Python.
+* Status koneksi Bluetooth.
+* Nilai joystick.
+* Nilai deadband.
+
+Pastikan ESP32 menerima data dengan format yang benar:
+
+```text
+<127,127,0,0>
+```
+
+---
+
+### 16.6 Motor Bergerak Tidak Sesuai Arah
+
+Periksa:
+
+* Urutan motor M1 sampai M4.
+* Kabel motor.
+* Konfigurasi PWM Right dan PWM Left.
+* Nilai `CAL1`, `CAL2`, `CAL3`, dan `CAL4`.
+* Rumus inverse kinematics.
+* Arah sumbu joystick.
+
+---
+
+## 17. Perintah Penting
+
+### Melihat perangkat RFCOMM
+
+```bash
+rfcomm
+```
+
+### Melihat port serial
+
+```bash
+python3 -m serial.tools.list_ports
+```
+
+### Melihat perangkat RFCOMM
+
+```bash
+ls /dev/rfcomm*
+```
+
+### Membuat binding RFCOMM
+
+```bash
+sudo rfcomm bind /dev/rfcomm0 8C:94:DF:4C:D2:EA 1
+```
+
+### Melepaskan binding RFCOMM
+
+```bash
+sudo rfcomm release /dev/rfcomm0
+```
+
+### Mengaktifkan virtual environment
+
+```bash
+source venv/bin/activate
+```
+
+### Menjalankan program Python
+
+```bash
+python3 controller_monitor.py
+```
+
+---
+
+## 18. Ringkasan
+
+Sistem dijalankan dengan alur berikut:
+
+```text
+Nyalakan ESP32
+      │
+      ▼
+Periksa rfcomm
+      │
+      ├── rfcomm0 tersedia
+      │       │
+      │       ▼
+      │   Jalankan Python
+      │
+      └── rfcomm0 belum tersedia
+              │
+              ▼
+      sudo rfcomm bind /dev/rfcomm0 8C:94:DF:4C:D2:EA 1
+              │
+              ▼
+        Jalankan Python
+              │
+              ▼
+      Refresh dan Connect
+              │
+              ▼
+       Kendalikan motor
+```
+
+Dengan konfigurasi yang sudah tersimpan, pengguna tidak perlu melakukan pairing ulang setiap kali menggunakan sistem. Cukup nyalakan ESP32, pastikan `/dev/rfcomm0` tersedia, lalu jalankan program Python.
